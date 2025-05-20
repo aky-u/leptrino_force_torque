@@ -95,15 +95,16 @@ int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);
   rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("leptrino");
-  rclcpp::Node::SharedPtr nh_private = rclcpp::Node::make_shared("~");
+  node->declare_parameter("com_port", g_com_port);
+  node->declare_parameter("rate", g_rate);
 
-  if (!nh_private->get_parameter("com_port", g_com_port))
+  if (!node->get_parameter("com_port", g_com_port))
   {
-    RCLCPP_WARN(node->get_logger(), "Port is not defined, trying /dev/ttyUSB0");
-    g_com_port = "/dev/ttyUSB0";
+    RCLCPP_WARN(node->get_logger(), "Port is not defined, trying /dev/ttyACM0");
+    g_com_port = "/dev/ttyACM0";
   }
 
-  if (!nh_private->get_parameter("rate", g_rate))
+  if (!node->get_parameter("rate", g_rate))
   {
     RCLCPP_WARN(node->get_logger(), "Rate is not defined, using maximum 1.2 kHz");
     g_rate = 1200;
@@ -111,7 +112,7 @@ int main(int argc, char** argv)
   rclcpp::Rate rate(g_rate);
 
   std::string frame_id = "leptrino";
-  nh_private->get_parameter("frame_id", frame_id);
+  node->get_parameter("frame_id", frame_id);
 
   int rt = 0;
   //ST_RES_HEAD *stCmdHead;
@@ -194,6 +195,11 @@ int main(int argc, char** argv)
   rclcpp::Time start_time;
 #endif
 
+int loop_counter = 0;
+const int calib_len = 100;
+const int calib_start = 100;
+auto msg_offset = geometry_msgs::msg::WrenchStamped();
+
   while (rclcpp::ok())
   {
     Comm_Rcv();
@@ -234,7 +240,34 @@ int main(int argc, char** argv)
         msg.wrench.torque.x = stForce->ssForce[3] * conversion_factor[3];
         msg.wrench.torque.y = stForce->ssForce[4] * conversion_factor[4];
         msg.wrench.torque.z = stForce->ssForce[5] * conversion_factor[5];
-        force_torque_pub->publish(msg);
+        
+        if(loop_counter < calib_start){
+          // do nothing
+        }else if(loop_counter >= calib_start  && loop_counter < calib_start+calib_len){
+          msg_offset.wrench.force.x += msg.wrench.force.x;
+          msg_offset.wrench.force.y += msg.wrench.force.y;
+          msg_offset.wrench.force.z += msg.wrench.force.z;
+          msg_offset.wrench.torque.x += msg.wrench.torque.x;
+          msg_offset.wrench.torque.y += msg.wrench.torque.y;
+          msg_offset.wrench.torque.z += msg.wrench.torque.z;
+        }else if(loop_counter == calib_len+calib_start){
+          msg_offset.wrench.force.x = msg_offset.wrench.force.x / calib_len;
+          msg_offset.wrench.force.y = msg_offset.wrench.force.y / calib_len;
+          msg_offset.wrench.force.z = msg_offset.wrench.force.z / calib_len;
+          msg_offset.wrench.torque.x = msg_offset.wrench.torque.x / calib_len;
+          msg_offset.wrench.torque.y = msg_offset.wrench.torque.y / calib_len;
+          msg_offset.wrench.torque.z = msg_offset.wrench.torque.z / calib_len;
+        }else{
+          msg.wrench.force.x -= msg_offset.wrench.force.x;
+          msg.wrench.force.y -= msg_offset.wrench.force.y;
+          msg.wrench.force.z -= msg_offset.wrench.force.z;
+          msg.wrench.torque.x -= msg_offset.wrench.torque.x;
+          msg.wrench.torque.y -= msg_offset.wrench.torque.y;
+          msg.wrench.torque.z -= msg_offset.wrench.torque.z;
+
+          force_torque_pub->publish(msg);
+        }      
+        loop_counter++;
       }
     }
     else
@@ -242,7 +275,7 @@ int main(int argc, char** argv)
       rate.sleep();
     }
 
-    rclcpp::spin(node);
+    // rclcpp::spin(node);
   } //while
 
   SerialStop(node->get_logger());
