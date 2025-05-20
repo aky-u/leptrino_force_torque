@@ -30,11 +30,11 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
 endforeach()
 
 # ------------------------ Compile ------------------------
+# Build the library as a hardware interface plugin
 add_library(${PROJECT_NAME} SHARED
   src/system.cpp
   src/rs_comm.cpp
 )
-
 target_include_directories(${PROJECT_NAME}
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -45,6 +45,21 @@ ament_target_dependencies(
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
 
+# Build as a node
+add_executable(${PROJECT_NAME}_node
+  src/leptrino_force_torque.cpp
+  src/rs_comm.cpp
+)
+target_include_directories(${PROJECT_NAME}_node
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(
+  ${PROJECT_NAME}_node PUBLIC
+  ${THIS_PACKAGE_INCLUDE_DEPENDS}
+)
+
 # Causes the visibility macros to use dllexport rather than dllimport,
 # which is appropriate when building the dll but not consuming it.
 target_compile_definitions(${PROJECT_NAME} PRIVATE "LEPTRINO_BUILDING_DLL")
@@ -52,6 +67,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE "LEPTRINO_BUILDING_DLL")
 pluginlib_export_plugin_description_file(hardware_interface leptrino_force_torque_sensor.xml)
 
 # ------------------------ Install ------------------------
+# Install the library
 install(
   DIRECTORY include/
   DESTINATION include/${PROJECT_NAME}
@@ -61,6 +77,18 @@ install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
+)
+
+# Install the node
+install(TARGETS ${PROJECT_NAME}_node
+  EXPORT export_${PROJECT_NAME}
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install the directories
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+  USE_SOURCE_PERMISSIONS
 )
 
 # ------------------------ Export ------------------------

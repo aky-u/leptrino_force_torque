@@ -13,7 +13,7 @@ def generate_launch_description():
             Node(
                 package="leptrino_force_torque",
                 namespace="left",
-                executable="leptrino_force_torque",
+                executable="leptrino_force_torque_node",
                 parameters=[{"com_port": "/dev/ttyACM0", "rate": 1200}],
                 output="screen",
             ),
