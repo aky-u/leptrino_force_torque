@@ -16,24 +16,28 @@ namespace leptrino_force_torque_sensor
       return hardware_interface::CallbackReturn::ERROR;
     }
 
-    // Store the information about the sensor
-    g_com_port_ = info.hardware_parameters.at("com_port");
-    g_rate_ = std::stoi(info.hardware_parameters.at("rate"));
-    g_com_ok_ = 0;
+    // Read the parameters from the hardware interface
+    if (info_.hardware_parameters.find("com_port") != info_.hardware_parameters.end())
+    {
+      g_com_port_ = info_.hardware_parameters.at("com_port");
+    }
+    else
+    {
+      RCLCPP_WARN(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Port is not defined, trying /dev/ttyUSB0");
+      g_com_port_ = "/dev/ttyUSB0";
+    }
 
-    // Initialize the conversion factors
-    conversion_factor_[0] = std::stod(info.hardware_parameters.at("conversion_factor_x"));
-    conversion_factor_[1] = std::stod(info.hardware_parameters.at("conversion_factor_y"));
-    conversion_factor_[2] = std::stod(info.hardware_parameters.at("conversion_factor_z"));
-    conversion_factor_[3] = std::stod(info.hardware_parameters.at("conversion_factor_rx"));
-    conversion_factor_[4] = std::stod(info.hardware_parameters.at("conversion_factor_ry"));
-    conversion_factor_[5] = std::stod(info.hardware_parameters.at("conversion_factor_rz"));
+    if (info_.hardware_parameters.find("rate") != info_.hardware_parameters.end())
+    {
+      g_rate_ = std::stoi(info_.hardware_parameters.at("rate"));
+    }
+    else
+    {
+      RCLCPP_WARN(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Rate is not defined, using maximum 1.2 kHz");
+      g_rate_ = 1200;
+    }
 
-    // // Initialize the hw state
-    // for (size_t i = 0; i < state_interfaces_.size(); ++i)
-    // {
-    //   state_interfaces_[i].set_value(0.0);
-    // }
+    // Initialize the state interfaces
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }

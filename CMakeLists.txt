@@ -29,17 +29,6 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
 
-# #add_library(${PROJECT_NAME} ${SRC_FILES})
-# include_directories(include)
-
-# ## Declare a cpp executable
-# add_executable(${PROJECT_NAME}
-#   src/leptrino_force_torque.cpp
-#   src/rs_comm.cpp
-# )
-
-# ament_target_dependencies(${PROJECT_NAME} rclcpp geometry_msgs)
-
 # ------------------------ Compile ------------------------
 add_library(${PROJECT_NAME} SHARED
   src/system.cpp
