@@ -23,6 +23,9 @@ public:
   std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
 
   hardware_interface::CallbackReturn
+  on_configure(const rclcpp_lifecycle::State &previous_state) override;
+
+  hardware_interface::CallbackReturn
   on_activate(const rclcpp_lifecycle::State &previous_state) override;
 
   hardware_interface::CallbackReturn
@@ -60,11 +63,6 @@ private:
   void GetLimit(rclcpp::Logger logger);
   void SerialStart(rclcpp::Logger logger);
   void SerialStop(rclcpp::Logger logger);
-
-  // Parameters for the RRBot simulation
-  double hw_start_sec_;
-  double hw_stop_sec_;
-  double hw_sensor_change_;
 
   // Objects for logging
   std::shared_ptr<rclcpp::Logger> logger_;
