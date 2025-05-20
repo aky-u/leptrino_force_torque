@@ -47,12 +47,16 @@ public:
   rclcpp::Clock::SharedPtr get_clock() const { return clock_; }
 
 private:
+  // Communication variables
   std::string g_com_port_;
   int g_rate_;
   int g_com_ok_;
   UCHAR CommRcvBuff_[256];
   UCHAR CommSendBuff_[1024];
   UCHAR SendBuff_[512];
+
+  // Calibration variables
+  bool has_got_limit_ = false;
   double conversion_factor_[FN_Num];
 
   // functions

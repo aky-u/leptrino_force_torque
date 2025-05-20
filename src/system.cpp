@@ -24,8 +24,8 @@ LeptrinoForceTorqueSensor::on_init(const hardware_interface::HardwareInfo &info)
   else
   {
     RCLCPP_WARN(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
-                "Port is not defined, trying /dev/ttyUSB0");
-    g_com_port_ = "/dev/ttyUSB0";
+                "Port is not defined, trying /dev/ttyACM0");
+    g_com_port_ = "/dev/ttyACM0";
   }
 
   if (info_.hardware_parameters.find("rate") != info_.hardware_parameters.end())
@@ -70,6 +70,12 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
 {
   // Initialize the application
   App_Init();
+  if (g_com_ok_ == COM_NG)
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Failed to open the port %s",
+                 g_com_port_.c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
 
   // Get the product information
   GetProductInfo(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
@@ -104,10 +110,63 @@ LeptrinoForceTorqueSensor::on_deactivate(const rclcpp_lifecycle::State & /*previ
 hardware_interface::return_type LeptrinoForceTorqueSensor::read(const rclcpp::Time & /*time*/,
                                                                 const rclcpp::Duration & /*period*/)
 {
-  // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
   std::stringstream ss;
   ss << "Reading states:";
+  if (!has_got_limit_)
+  {
+    Comm_Rcv();
+    if (Comm_CheckRcv() != 0)
+    { // 受信データ有
+      CommRcvBuff_[0] = 0;
 
+      auto rt = Comm_GetRcvData(CommRcvBuff_);
+      if (rt > 0)
+      {
+        auto stGetLimit = (ST_R_LEP_GET_LIMIT *)CommRcvBuff_;
+        for (int i = 0; i < FN_Num; i++)
+        {
+          RCLCPP_INFO(get_logger(), "\tLimit[%d]: %f", i, stGetLimit->fLimit[i]);
+          conversion_factor_[i] = stGetLimit->fLimit[i] * 1e-4;
+        }
+        has_got_limit_ = true;
+      }
+    }
+    else
+    {
+      rclcpp::Rate loop_rate(g_rate_);
+      loop_rate.sleep();
+    }
+
+    usleep(10000);
+
+    // 連続送信開始
+    SerialStart(get_logger());
+  }
+
+  Comm_Rcv();
+  if (Comm_CheckRcv() != 0)
+  { // 受信データ有
+    memset(CommRcvBuff_, 0, sizeof(CommRcvBuff_));
+    auto rt = Comm_GetRcvData(CommRcvBuff_);
+    if (rt > 0)
+    {
+      auto stForce = (ST_R_DATA_GET_F *)CommRcvBuff_;
+      auto &clk = *clock_;
+      RCLCPP_DEBUG_THROTTLE(get_logger(), clk, 0.1, "%d,%d,%d,%d,%d,%d", stForce->ssForce[0],
+                            stForce->ssForce[1], stForce->ssForce[2], stForce->ssForce[3],
+                            stForce->ssForce[4], stForce->ssForce[5]);
+
+      for (int i = 0; i < FN_Num; i++)
+      {
+        hw_sensor_states_[i] = stForce->ssForce[i] * conversion_factor_[i];
+      }
+    }
+    else
+    {
+      rclcpp::Rate loop_rate(g_rate_);
+      loop_rate.sleep();
+    }
+  }
   return hardware_interface::return_type::OK;
 }
 // ----------------------------------------------------------------------------
