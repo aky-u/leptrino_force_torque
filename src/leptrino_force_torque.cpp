@@ -42,21 +42,21 @@
 //    Ver 1.0.0   2022/06/01
 // =============================================================================
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
+#include <leptrino/pComResInternal.h>
 #include <leptrino/pCommon.h>
 #include <leptrino/rs_comm.h>
-#include <leptrino/pComResInternal.h>
 
-#include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/wrench_stamped.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 // =============================================================================
 //  マクロ定義 Defining macros
 // =============================================================================
-#define PRG_VER  "Ver 1.0.0"
+#define PRG_VER "Ver 1.0.0"
 
 // =============================================================================
 //  構造体定義 Defining structs
@@ -91,7 +91,7 @@ int g_rate;
 
 #define TEST_TIME 0
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
   rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("leptrino");
@@ -115,14 +115,14 @@ int main(int argc, char** argv)
   node->get_parameter("frame_id", frame_id);
 
   int rt = 0;
-  //ST_RES_HEAD *stCmdHead;
+  // ST_RES_HEAD *stCmdHead;
   ST_R_DATA_GET_F *stForce;
   ST_R_GET_INF *stGetInfo;
-  ST_R_LEP_GET_LIMIT* stGetLimit;
+  ST_R_LEP_GET_LIMIT *stGetLimit;
 
   App_Init();
 
-  if (gSys.com_ok == NG)
+  if (gSys.com_ok == COM_NG)
   {
     RCLCPP_ERROR(node->get_logger(), "%s open failed\n", g_com_port.c_str());
     exit(0);
@@ -134,7 +134,7 @@ int main(int argc, char** argv)
   {
     Comm_Rcv();
     if (Comm_CheckRcv() != 0)
-    { //受信データ有
+    { // 受信データ有
       CommRcvBuff[0] = 0;
 
       rt = Comm_GetRcvData(CommRcvBuff);
@@ -161,7 +161,7 @@ int main(int argc, char** argv)
   {
     Comm_Rcv();
     if (Comm_CheckRcv() != 0)
-    { //受信データ有
+    { // 受信データ有
       CommRcvBuff[0] = 0;
 
       rt = Comm_GetRcvData(CommRcvBuff);
@@ -182,7 +182,8 @@ int main(int argc, char** argv)
     }
   }
 
-  rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr force_torque_pub = node->create_publisher<geometry_msgs::msg::WrenchStamped>("force_torque", 1);
+  rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr force_torque_pub =
+      node->create_publisher<geometry_msgs::msg::WrenchStamped>("force_torque", 1);
 
   usleep(10000);
 
@@ -195,23 +196,24 @@ int main(int argc, char** argv)
   rclcpp::Time start_time;
 #endif
 
-int loop_counter = 0;
-const int calib_len = 100;
-const int calib_start = 100;
-auto msg_offset = geometry_msgs::msg::WrenchStamped();
+  int loop_counter = 0;
+  const int calib_len = 100;
+  const int calib_start = 100;
+  auto msg_offset = geometry_msgs::msg::WrenchStamped();
 
   while (rclcpp::ok())
   {
     Comm_Rcv();
     if (Comm_CheckRcv() != 0)
-    { //受信データ有
+    { // 受信データ有
 
 #if TEST_TIME
       dt_count++;
       dt_sum += (node->now() - start_time).toSec();
       if (dt_sum >= 1.0)
       {
-        ROS_INFO("Time test: read %d in %6.3f sec: %6.3f kHz", dt_count, dt_sum, (dt_count / dt_sum) * 0.001);
+        ROS_INFO("Time test: read %d in %6.3f sec: %6.3f kHz", dt_count, dt_sum,
+                 (dt_count / dt_sum) * 0.001);
         dt_count = 0;
         dt_sum = 0.0;
       }
@@ -223,13 +225,10 @@ auto msg_offset = geometry_msgs::msg::WrenchStamped();
       if (rt > 0)
       {
         stForce = (ST_R_DATA_GET_F *)CommRcvBuff;
-        auto& clk = *node->get_clock();
-        RCLCPP_DEBUG_THROTTLE(node->get_logger(),
-                              clk,
-                              0.1,
-                              "%d,%d,%d,%d,%d,%d",
-                              stForce->ssForce[0], stForce->ssForce[1], stForce->ssForce[2], stForce->ssForce[3], stForce->ssForce[4], stForce->ssForce[5]
-                             );
+        auto &clk = *node->get_clock();
+        RCLCPP_DEBUG_THROTTLE(node->get_logger(), clk, 0.1, "%d,%d,%d,%d,%d,%d",
+                              stForce->ssForce[0], stForce->ssForce[1], stForce->ssForce[2],
+                              stForce->ssForce[3], stForce->ssForce[4], stForce->ssForce[5]);
 
         auto msg = geometry_msgs::msg::WrenchStamped();
         msg.header.stamp = node->now();
@@ -240,24 +239,31 @@ auto msg_offset = geometry_msgs::msg::WrenchStamped();
         msg.wrench.torque.x = stForce->ssForce[3] * conversion_factor[3];
         msg.wrench.torque.y = stForce->ssForce[4] * conversion_factor[4];
         msg.wrench.torque.z = stForce->ssForce[5] * conversion_factor[5];
-        
-        if(loop_counter < calib_start){
+
+        if (loop_counter < calib_start)
+        {
           // do nothing
-        }else if(loop_counter >= calib_start  && loop_counter < calib_start+calib_len){
+        }
+        else if (loop_counter >= calib_start && loop_counter < calib_start + calib_len)
+        {
           msg_offset.wrench.force.x += msg.wrench.force.x;
           msg_offset.wrench.force.y += msg.wrench.force.y;
           msg_offset.wrench.force.z += msg.wrench.force.z;
           msg_offset.wrench.torque.x += msg.wrench.torque.x;
           msg_offset.wrench.torque.y += msg.wrench.torque.y;
           msg_offset.wrench.torque.z += msg.wrench.torque.z;
-        }else if(loop_counter == calib_len+calib_start){
+        }
+        else if (loop_counter == calib_len + calib_start)
+        {
           msg_offset.wrench.force.x = msg_offset.wrench.force.x / calib_len;
           msg_offset.wrench.force.y = msg_offset.wrench.force.y / calib_len;
           msg_offset.wrench.force.z = msg_offset.wrench.force.z / calib_len;
           msg_offset.wrench.torque.x = msg_offset.wrench.torque.x / calib_len;
           msg_offset.wrench.torque.y = msg_offset.wrench.torque.y / calib_len;
           msg_offset.wrench.torque.z = msg_offset.wrench.torque.z / calib_len;
-        }else{
+        }
+        else
+        {
           msg.wrench.force.x -= msg_offset.wrench.force.x;
           msg.wrench.force.y -= msg_offset.wrench.force.y;
           msg.wrench.force.z -= msg_offset.wrench.force.z;
@@ -266,7 +272,7 @@ auto msg_offset = geometry_msgs::msg::WrenchStamped();
           msg.wrench.torque.z -= msg_offset.wrench.torque.z;
 
           force_torque_pub->publish(msg);
-        }      
+        }
         loop_counter++;
       }
     }
@@ -276,7 +282,7 @@ auto msg_offset = geometry_msgs::msg::WrenchStamped();
     }
 
     // rclcpp::spin(node);
-  } //while
+  } // while
 
   SerialStop(node->get_logger());
   App_Close(node->get_logger());
@@ -293,15 +299,14 @@ void App_Init(void)
 {
   int rt;
 
-  //Commポート初期化
-  gSys.com_ok = NG;
+  // Commポート初期化
+  gSys.com_ok = COM_NG;
   rt = Comm_Open(g_com_port.c_str());
-  if (rt == OK)
+  if (rt == COM_OK)
   {
     Comm_Setup(460800, PAR_NON, BIT_LEN_8, 0, 0, CHR_ETX);
-    gSys.com_ok = OK;
+    gSys.com_ok = COM_OK;
   }
-
 }
 
 // ----------------------------------------------------------------------------------
@@ -314,7 +319,7 @@ void App_Close(rclcpp::Logger logger)
 {
   RCLCPP_DEBUG(logger, "Application close\n");
 
-  if (gSys.com_ok == OK)
+  if (gSys.com_ok == COM_OK)
   {
     Comm_Close();
   }
@@ -347,29 +352,29 @@ ULONG SendData(UCHAR *pucInput, USHORT usSize)
   {
     ucWork = pucInput[usCnt];
     if (ucWork == CHR_DLE)
-    { // データが0x10ならば0x10を付加
+    {                      // データが0x10ならば0x10を付加
       *pucWrite = CHR_DLE; // DLE付加
-      pucWrite++; // 書き込み先
-      usRealSize++; // 実サイズ
+      pucWrite++;          // 書き込み先
+      usRealSize++;        // 実サイズ
       // BCCは計算しない!
     }
     *pucWrite = ucWork; // データ
-    ucBCC ^= ucWork; // BCC
-    pucWrite++; // 書き込み先
-    usRealSize++; // 実サイズ
+    ucBCC ^= ucWork;    // BCC
+    pucWrite++;         // 書き込み先
+    usRealSize++;       // 実サイズ
   }
 
   *pucWrite = CHR_DLE; // DLE
   pucWrite++;
   *pucWrite = CHR_ETX; // ETX
-  ucBCC ^= CHR_ETX; // BCC計算
+  ucBCC ^= CHR_ETX;    // BCC計算
   pucWrite++;
   *pucWrite = ucBCC; // BCC付加
   usRealSize += 3;
 
   Comm_SendData(&CommSendBuff[0], usRealSize);
 
-  return OK;
+  return COM_OK;
 }
 
 void GetProductInfo(rclcpp::Logger logger)
@@ -377,11 +382,11 @@ void GetProductInfo(rclcpp::Logger logger)
   USHORT len;
 
   RCLCPP_INFO(logger, "Get sensor information");
-  len = 0x04; // データ長
-  SendBuff[0] = len; // レングス
-  SendBuff[1] = 0xFF; // センサNo.
+  len = 0x04;                // データ長
+  SendBuff[0] = len;         // レングス
+  SendBuff[1] = 0xFF;        // センサNo.
   SendBuff[2] = CMD_GET_INF; // コマンド種別
-  SendBuff[3] = 0; // 予備
+  SendBuff[3] = 0;           // 予備
 
   SendData(SendBuff, len);
 }
@@ -392,10 +397,10 @@ void GetLimit(rclcpp::Logger logger)
 
   RCLCPP_INFO(logger, "Get sensor limit");
   len = 0x04;
-  SendBuff[0] = len; // レングス length
-  SendBuff[1] = 0xFF; // センサNo. Sensor no.
+  SendBuff[0] = len;           // レングス length
+  SendBuff[1] = 0xFF;          // センサNo. Sensor no.
   SendBuff[2] = CMD_GET_LIMIT; // コマンド種別 Command type
-  SendBuff[3] = 0; // 予備 reserve
+  SendBuff[3] = 0;             // 予備 reserve
 
   SendData(SendBuff, len);
 }
@@ -405,11 +410,11 @@ void SerialStart(rclcpp::Logger logger)
   USHORT len;
 
   RCLCPP_INFO(logger, "Start sensor");
-  len = 0x04; // データ長
-  SendBuff[0] = len; // レングス
-  SendBuff[1] = 0xFF; // センサNo.
+  len = 0x04;                   // データ長
+  SendBuff[0] = len;            // レングス
+  SendBuff[1] = 0xFF;           // センサNo.
   SendBuff[2] = CMD_DATA_START; // コマンド種別
-  SendBuff[3] = 0; // 予備
+  SendBuff[3] = 0;              // 予備
 
   SendData(SendBuff, len);
 }
@@ -419,11 +424,11 @@ void SerialStop(rclcpp::Logger logger)
   USHORT len;
 
   RCLCPP_INFO(logger, "Stop sensor\n");
-  len = 0x04; // データ長
-  SendBuff[0] = len; // レングス
-  SendBuff[1] = 0xFF; // センサNo.
+  len = 0x04;                  // データ長
+  SendBuff[0] = len;           // レングス
+  SendBuff[1] = 0xFF;          // センサNo.
   SendBuff[2] = CMD_DATA_STOP; // コマンド種別
-  SendBuff[3] = 0; // 予備
+  SendBuff[3] = 0;             // 予備
 
   SendData(SendBuff, len);
 }

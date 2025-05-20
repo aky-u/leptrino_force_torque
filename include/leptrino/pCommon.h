@@ -18,15 +18,15 @@ typedef signed long SLONG;
 /********************************************************************************/
 /*  定数定義                                   */
 /********************************************************************************/
-#define OK   1
-#define NG  -1
+#define COM_OK 1
+#define COM_NG -1
 
-#define SERIAL_SIZE    8      /* 製品シリアルサイズ */
-#define P_NAME_SIZE    16     /* 製品型式サイズ */
-#define F_VER_SIZE     4      /* ファームバージョンサイズ */
-#define FREQ_SIZE      6      /* 出力レート */
+#define SERIAL_SIZE 8  /* 製品シリアルサイズ */
+#define P_NAME_SIZE 16 /* 製品型式サイズ */
+#define F_VER_SIZE 4   /* ファームバージョンサイズ */
+#define FREQ_SIZE 6    /* 出力レート */
 
-#define MSG_SIZE    128       /* 電文サイズ */
+#define MSG_SIZE 128 /* 電文サイズ */
 
 /********************************************************************************/
 /*  マクロ                                     */
