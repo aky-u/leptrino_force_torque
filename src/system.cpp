@@ -7,86 +7,27 @@ namespace leptrino_force_torque
 //   // If the controller manager is shutdown via Ctrl + C
 //   on_cleanup(rclcpp_lifecycle::State());
 // }
-
 hardware_interface::CallbackReturn
 LeptrinoForceTorqueSensor::on_init(const hardware_interface::HardwareInfo &info)
 {
-  // Initialize the sensor interface
-  if (SensorInterface::on_init(info) != hardware_interface::CallbackReturn::SUCCESS)
+  if (hardware_interface::SensorInterface::on_init(info) !=
+      hardware_interface::CallbackReturn::SUCCESS)
   {
     return hardware_interface::CallbackReturn::ERROR;
   }
-
-  // Read the parameters from the hardware interface
-  if (info_.hardware_parameters.find("com_port") != info_.hardware_parameters.end())
-  {
-    g_com_port_ = info_.hardware_parameters.at("com_port");
-  }
-  else
-  {
-    RCLCPP_WARN(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
-                "Port is not defined, trying /dev/ttyUSB0");
-    g_com_port_ = "/dev/ttyUSB0";
-  }
-
-  if (info_.hardware_parameters.find("rate") != info_.hardware_parameters.end())
-  {
-    g_rate_ = std::stoi(info_.hardware_parameters.at("rate"));
-  }
-  else
-  {
-    RCLCPP_WARN(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
-                "Rate is not defined, using maximum 1.2 kHz");
-    g_rate_ = 1200;
-  }
-
-  // Initialize the object for logging
   logger_ = std::make_shared<rclcpp::Logger>(rclcpp::get_logger(
       "controller_manager.resource_manager.hardware_component.sensor.ExternalRRBotFTSensor"));
   clock_ = std::make_shared<rclcpp::Clock>(rclcpp::Clock());
 
-  // Initialize the state interfaces
+  // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
+  hw_start_sec_ = stod(info_.hardware_parameters["example_param_hw_start_duration_sec"]);
+  hw_stop_sec_ = stod(info_.hardware_parameters["example_param_hw_stop_duration_sec"]);
+  hw_sensor_change_ = stod(info_.hardware_parameters["example_param_max_sensor_change"]);
+  // END: This part here is for exemplary purposes - Please do not copy to your production code
+
   hw_sensor_states_.resize(info_.sensors[0].state_interfaces.size(),
                            std::numeric_limits<double>::quiet_NaN());
 
-  return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-hardware_interface::CallbackReturn
-LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_state)
-{
-  // Initialize the application
-  App_Init();
-
-  // Get the product information
-  GetProductInfo(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
-
-  // Get the limit information
-  GetLimit(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
-
-  // Start the sensor
-  SerialStart(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
-
-  return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-// hardware_interface::CallbackReturn
-// LeptrinoForceTorqueSensor::on_cleanup(const rclcpp_lifecycle::State &previous_state)
-// {
-//   // Stop the sensor
-//   SerialStop(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
-
-//   // Close the application
-//   App_Close(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
-
-//   return hardware_interface::CallbackReturn::SUCCESS;
-// }
-
-hardware_interface::CallbackReturn
-LeptrinoForceTorqueSensor::on_shutdown(const rclcpp_lifecycle::State &previous_state)
-{
-  // Shutdown the application
-  App_Close(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -104,11 +45,65 @@ std::vector<hardware_interface::StateInterface> LeptrinoForceTorqueSensor::expor
   return state_interfaces;
 }
 
-hardware_interface::return_type LeptrinoForceTorqueSensor::read(const rclcpp::Time &time,
-                                                                const rclcpp::Duration &period)
+hardware_interface::CallbackReturn
+LeptrinoForceTorqueSensor::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
+  RCLCPP_INFO(get_logger(), "Activating ...please wait...");
+
+  for (int i = 0; i < hw_start_sec_; i++)
+  {
+    rclcpp::sleep_for(std::chrono::seconds(1));
+    RCLCPP_INFO(get_logger(), "%.1f seconds left...", hw_start_sec_ - i);
+  }
+
+  RCLCPP_INFO(get_logger(), "Successfully activated!");
+  // END: This part here is for exemplary purposes - Please do not copy to your production code
+
+  return hardware_interface::CallbackReturn::SUCCESS;
 }
 
+hardware_interface::CallbackReturn
+LeptrinoForceTorqueSensor::on_deactivate(const rclcpp_lifecycle::State & /*previous_state*/)
+{
+  // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
+  RCLCPP_INFO(get_logger(), "Deactivating ...please wait...");
+
+  for (int i = 0; i < hw_stop_sec_; i++)
+  {
+    rclcpp::sleep_for(std::chrono::seconds(1));
+    RCLCPP_INFO(get_logger(), "%.1f seconds left...", hw_stop_sec_ - i);
+  }
+
+  RCLCPP_INFO(get_logger(), "Successfully deactivated!");
+  // END: This part here is for exemplary purposes - Please do not copy to your production code
+
+  return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+hardware_interface::return_type LeptrinoForceTorqueSensor::read(const rclcpp::Time & /*time*/,
+                                                                const rclcpp::Duration & /*period*/)
+{
+  // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
+  std::stringstream ss;
+  ss << "Reading states:";
+
+  for (uint i = 0; i < hw_sensor_states_.size(); i++)
+  {
+    // Simulate RRBot's sensor data
+    unsigned int seed = time(NULL) + i;
+    hw_sensor_states_[i] =
+        static_cast<float>(rand_r(&seed)) / (static_cast<float>(RAND_MAX / hw_sensor_change_));
+
+    ss << std::fixed << std::setprecision(2) << std::endl
+       << "\t" << hw_sensor_states_[i] << " for sensor '"
+       << info_.sensors[0].state_interfaces[i].name.c_str() << "'";
+  }
+  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500, "%s", ss.str().c_str());
+  // END: This part here is for exemplary purposes - Please do not copy to your production code
+
+  return hardware_interface::return_type::OK;
+}
 // ----------------------------------------------------------------------------
 // Private functions
 // ----------------------------------------------------------------------------
@@ -117,12 +112,12 @@ void LeptrinoForceTorqueSensor::App_Init()
   int rt;
 
   // Initialize the Comm port
-  g_com_ok_ = NG;
+  g_com_ok_ = COM_NG;
   rt = Comm_Open(g_com_port_.c_str());
-  if (rt == OK)
+  if (rt == COM_OK)
   {
     Comm_Setup(460800, PAR_NON, BIT_LEN_8, 0, 0, CHR_ETX);
-    g_com_ok_ = OK;
+    g_com_ok_ = COM_OK;
   }
 }
 
@@ -130,7 +125,7 @@ void LeptrinoForceTorqueSensor::App_Close(rclcpp::Logger logger)
 {
   RCLCPP_DEBUG(logger, "Application close\n");
 
-  if (g_com_ok_ == OK)
+  if (g_com_ok_ == COM_OK)
   {
     Comm_Close();
   }
@@ -177,7 +172,7 @@ ULONG LeptrinoForceTorqueSensor::SendData(UCHAR *pucInput, USHORT usSize)
 
   Comm_SendData(&CommSendBuff_[0], usRealSize);
 
-  return OK;
+  return COM_OK;
 }
 
 void LeptrinoForceTorqueSensor::GetProductInfo(rclcpp::Logger logger)
