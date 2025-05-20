@@ -64,7 +64,7 @@ ament_target_dependencies(
 # which is appropriate when building the dll but not consuming it.
 target_compile_definitions(${PROJECT_NAME} PRIVATE "LEPTRINO_BUILDING_DLL")
 # Export hardware plugins
-pluginlib_export_plugin_description_file(hardware_interface leptrino_force_torque_sensor.xml)
+pluginlib_export_plugin_description_file(hardware_interface leptrino_force_torque.xml)
 
 # ------------------------ Install ------------------------
 # Install the library

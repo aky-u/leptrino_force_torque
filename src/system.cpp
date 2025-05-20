@@ -1,6 +1,6 @@
 #include "leptrino/system.hpp"
 
-namespace leptrino_force_torque_sensor
+namespace leptrino_force_torque
 {
   LeptrinoForceTorqueSensor::~LeptrinoForceTorqueSensor()
   {
@@ -169,4 +169,10 @@ namespace leptrino_force_torque_sensor
     SendData(SendBuff_, len);
   }
 
-} // namespace leptrino_force_torque_sensor
+} // namespace leptrino_force_torque
+
+// ----------------------------------------------------------------------------
+// Export plugin
+// ----------------------------------------------------------------------------
+#include "pluginlib/class_list_macros.hpp"
+PLUGINLIB_EXPORT_CLASS(leptrino_force_torque::LeptrinoForceTorqueSensor, hardware_interface::SensorInterface)

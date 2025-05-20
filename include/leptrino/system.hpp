@@ -8,7 +8,7 @@
 #include "leptrino/pComResInternal.h"
 #include "leptrino/pCommon.h"
 
-namespace leptrino_force_torque_sensor
+namespace leptrino_force_torque
 {
   class LeptrinoForceTorqueSensor : public hardware_interface::SensorInterface
   {
@@ -44,5 +44,5 @@ namespace leptrino_force_torque_sensor
     // state interfaces
     std::vector<double> hw_sensor_states_;
   };
-} // namespace leptrino_force_torque_sensor
+} // namespace leptrino_force_torque
 #endif // _LEPTRINO_SYSTEM_HPP

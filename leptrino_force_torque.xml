@@ -1,0 +1,8 @@
+<library path="leptrino_force_torque">
+  <class name="leptrino_force_torque/LeptrinoForceTorqueSensor"
+         type="leptrino_force_torque::LeptrinoForceTorqueSensor"
+         base_class_type="hardware_interface::SensorInterface">
+    <description>
+    </description>
+  </class>
+</library>
