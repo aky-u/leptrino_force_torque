@@ -32,8 +32,8 @@ endforeach()
 # ------------------------ Compile ------------------------
 # Build the library as a hardware interface plugin
 add_library(${PROJECT_NAME} SHARED
-  src/system.cpp
-  src/rs_comm.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/system.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/rs_comm.cpp
 )
 target_include_directories(${PROJECT_NAME}
   PUBLIC
@@ -47,8 +47,8 @@ ament_target_dependencies(
 
 # Build as a node
 add_executable(${PROJECT_NAME}_node
-  src/leptrino_force_torque_node.cpp
-  src/rs_comm.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/leptrino_force_torque_node.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/rs_comm.cpp
 )
 target_include_directories(${PROJECT_NAME}_node
   PUBLIC
