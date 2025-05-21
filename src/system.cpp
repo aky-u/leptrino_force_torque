@@ -79,12 +79,64 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
 
   // Get the product information
   GetProductInfo(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+  while (rclcpp::ok())
+  {
+    Comm_Rcv();
+    if (Comm_CheckRcv() != 0)
+    { // Receive data
+      CommRcvBuff_[0] = 0;
+
+      auto rt = Comm_GetRcvData(CommRcvBuff_);
+      if (rt > 0)
+      {
+        auto stGetInfo = (ST_R_GET_INF *)CommRcvBuff_;
+        stGetInfo->scFVer[F_VER_SIZE] = 0;
+        RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Version: %s",
+                    stGetInfo->scFVer);
+        stGetInfo->scSerial[SERIAL_SIZE] = 0;
+        RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "SerialNo: %s",
+                    stGetInfo->scSerial);
+        stGetInfo->scPName[P_NAME_SIZE] = 0;
+        RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Type: %s",
+                    stGetInfo->scPName);
+        break;
+      }
+    }
+    else
+    {
+      rclcpp::Rate loop_rate(g_rate_);
+      loop_rate.sleep();
+    }
+  }
 
   // Get the limit information
   GetLimit(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+  while (rclcpp::ok())
+  {
+    Comm_Rcv();
+    if (Comm_CheckRcv() != 0)
+    { // Receive data
+      CommRcvBuff_[0] = 0;
 
-  // Start the sensor
-  SerialStart(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+      auto rt = Comm_GetRcvData(CommRcvBuff_);
+      if (rt > 0)
+      {
+        auto stGetLimit = (ST_R_LEP_GET_LIMIT *)CommRcvBuff_;
+        for (int i = 0; i < FN_Num; i++)
+        {
+          RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "\tLimit[%d]: %f", i,
+                      stGetLimit->fLimit[i]);
+          conversion_factor_[i] = stGetLimit->fLimit[i] * 1e-4;
+        }
+        break;
+      }
+    }
+    else
+    {
+      rclcpp::Rate loop_rate(g_rate_);
+      loop_rate.sleep();
+    }
+  }
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -92,6 +144,8 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
 hardware_interface::CallbackReturn
 LeptrinoForceTorqueSensor::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  // Start the sensor
+  SerialStart(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -110,42 +164,10 @@ LeptrinoForceTorqueSensor::on_deactivate(const rclcpp_lifecycle::State & /*previ
 hardware_interface::return_type LeptrinoForceTorqueSensor::read(const rclcpp::Time & /*time*/,
                                                                 const rclcpp::Duration & /*period*/)
 {
-  std::stringstream ss;
-  ss << "Reading states:";
-  if (!has_got_limit_)
-  {
-    Comm_Rcv();
-    if (Comm_CheckRcv() != 0)
-    { // 受信データ有
-      CommRcvBuff_[0] = 0;
-
-      auto rt = Comm_GetRcvData(CommRcvBuff_);
-      if (rt > 0)
-      {
-        auto stGetLimit = (ST_R_LEP_GET_LIMIT *)CommRcvBuff_;
-        for (int i = 0; i < FN_Num; i++)
-        {
-          RCLCPP_INFO(get_logger(), "\tLimit[%d]: %f", i, stGetLimit->fLimit[i]);
-          conversion_factor_[i] = stGetLimit->fLimit[i] * 1e-4;
-        }
-        has_got_limit_ = true;
-      }
-    }
-    else
-    {
-      rclcpp::Rate loop_rate(g_rate_);
-      loop_rate.sleep();
-    }
-
-    usleep(10000);
-
-    // 連続送信開始
-    SerialStart(get_logger());
-  }
-
+  // Read the data from the sensor
   Comm_Rcv();
   if (Comm_CheckRcv() != 0)
-  { // 受信データ有
+  { // Receive data
     memset(CommRcvBuff_, 0, sizeof(CommRcvBuff_));
     auto rt = Comm_GetRcvData(CommRcvBuff_);
     if (rt > 0)
@@ -167,6 +189,7 @@ hardware_interface::return_type LeptrinoForceTorqueSensor::read(const rclcpp::Ti
       loop_rate.sleep();
     }
   }
+
   return hardware_interface::return_type::OK;
 }
 // ----------------------------------------------------------------------------

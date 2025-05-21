@@ -56,7 +56,6 @@ private:
   UCHAR SendBuff_[512];
 
   // Calibration variables
-  bool has_got_limit_ = false;
   double conversion_factor_[FN_Num];
 
   // functions
