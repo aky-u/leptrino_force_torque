@@ -53,11 +53,8 @@ LeptrinoForceTorqueSensor::on_init(const hardware_interface::HardwareInfo &info)
   }
 
   // Initialize the calibration offset
+  calib_offset_.clear();
   calib_offset_.resize(FN_Num, 0.0);
-  for (int i = 0; i < FN_Num; i++)
-  {
-    calib_offset_[i] = 0.0;
-  }
 
   // Initialize the object for logging
   logger_ = std::make_shared<rclcpp::Logger>(rclcpp::get_logger(
