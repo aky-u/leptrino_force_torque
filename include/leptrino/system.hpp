@@ -56,7 +56,8 @@ private:
   UCHAR SendBuff_[512];
 
   // Calibration variables
-  int calib_len_; // Calibration length non-positive means no calibration
+  const int kCalibIgnoreFirst = 100; // Ignore first 100 samples
+  int calib_len_;                    // Calibration length non-positive means no calibration
   std::vector<double> calib_offset_;
   double conversion_factor_[FN_Num];
 

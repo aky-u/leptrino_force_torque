@@ -176,7 +176,7 @@ LeptrinoForceTorqueSensor::on_activate(const rclcpp_lifecycle::State & /*previou
   rclcpp::Rate loop_rate(g_rate_);
   RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Calibration length is %d",
               calib_len_);
-  int loop_counter = 0;
+  int loop_counter = -kCalibIgnoreFirst; // Ignore first 100 samples
   while (rclcpp::ok() && loop_counter < calib_len_)
   {
     Comm_Rcv();
@@ -188,6 +188,12 @@ LeptrinoForceTorqueSensor::on_activate(const rclcpp_lifecycle::State & /*previou
       if (rt > 0)
       {
         auto stForce = (ST_R_DATA_GET_F *)CommRcvBuff_;
+        if (loop_counter < 0)
+        {
+          // Ignore first 100 samples
+          loop_counter++;
+          continue;
+        }
         for (int i = 0; i < FN_Num; i++)
         {
           calib_offset_[i] += stForce->ssForce[i] * conversion_factor_[i];
