@@ -47,7 +47,7 @@ ament_target_dependencies(
 
 # Build as a node
 add_executable(${PROJECT_NAME}_node
-  src/leptrino_force_torque.cpp
+  src/leptrino_force_torque_node.cpp
   src/rs_comm.cpp
 )
 target_include_directories(${PROJECT_NAME}_node
