@@ -41,6 +41,24 @@ LeptrinoForceTorqueSensor::on_init(const hardware_interface::HardwareInfo &info)
     g_rate_ = 1200;
   }
 
+  if (info_.hardware_parameters.find("calib_len") != info_.hardware_parameters.end())
+  {
+    calib_len_ = std::stoi(info_.hardware_parameters.at("calib_len"));
+  }
+  else
+  {
+    RCLCPP_WARN(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
+                "Calibration length is not defined, using no calibration");
+    calib_len_ = -1;
+  }
+
+  // Initialize the calibration offset
+  calib_offset_.resize(FN_Num, 0.0);
+  for (int i = 0; i < FN_Num; i++)
+  {
+    calib_offset_[i] = 0.0;
+  }
+
   // Initialize the object for logging
   logger_ = std::make_shared<rclcpp::Logger>(rclcpp::get_logger(
       "controller_manager.resource_manager.hardware_component.sensor.ExternalRRBotFTSensor"));
@@ -140,6 +158,52 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
     }
   }
 
+  // Initialize the calibration offset
+  if (calib_len_ <= 0)
+  {
+    RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
+                "Calibration length is not defined, using no calibration");
+    return hardware_interface::CallbackReturn::SUCCESS;
+  }
+
+  // Activate sensor during the calibration
+  SerialStart(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+  rclcpp::Rate loop_rate(g_rate_);
+  RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Calibration length is %d",
+              calib_len_);
+  int loop_counter = 0;
+  while (rclcpp::ok() && loop_counter < calib_len_)
+  {
+    Comm_Rcv();
+    if (Comm_CheckRcv() != 0)
+    { // Receive data
+      CommRcvBuff_[0] = 0;
+
+      auto rt = Comm_GetRcvData(CommRcvBuff_);
+      if (rt > 0)
+      {
+        auto stForce = (ST_R_DATA_GET_F *)CommRcvBuff_;
+        for (int i = 0; i < FN_Num; i++)
+        {
+          calib_offset_[i] += stForce->ssForce[i] * conversion_factor_[i];
+        }
+        loop_counter++;
+      }
+    }
+    else
+    {
+      loop_rate.sleep();
+    }
+  }
+  for (int i = 0; i < FN_Num; i++)
+  {
+    calib_offset_[i] /= calib_len_;
+    RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Calibration offset[%d]: %f", i,
+                calib_offset_[i]);
+  }
+  // Stop the sensor
+  SerialStop(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -182,7 +246,7 @@ hardware_interface::return_type LeptrinoForceTorqueSensor::read(const rclcpp::Ti
 
       for (int i = 0; i < FN_Num; i++)
       {
-        hw_sensor_states_[i] = stForce->ssForce[i] * conversion_factor_[i];
+        hw_sensor_states_[i] = stForce->ssForce[i] * conversion_factor_[i] - calib_offset_[i];
       }
     }
     else

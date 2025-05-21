@@ -56,6 +56,8 @@ private:
   UCHAR SendBuff_[512];
 
   // Calibration variables
+  int calib_len_; // Calibration length non-positive means no calibration
+  std::vector<double> calib_offset_;
   double conversion_factor_[FN_Num];
 
   // functions
