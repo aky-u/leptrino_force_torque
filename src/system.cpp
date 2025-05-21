@@ -155,7 +155,16 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
     }
   }
 
-  // Initialize the calibration offset
+  return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+hardware_interface::CallbackReturn
+LeptrinoForceTorqueSensor::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
+{
+  // Activate sensor
+  SerialStart(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+
+  // Skip calibration if the length is not defined
   if (calib_len_ <= 0)
   {
     RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
@@ -163,8 +172,7 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
     return hardware_interface::CallbackReturn::SUCCESS;
   }
 
-  // Activate sensor during the calibration
-  SerialStart(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+  // Initialize the calibration offset
   rclcpp::Rate loop_rate(g_rate_);
   RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Calibration length is %d",
               calib_len_);
@@ -198,17 +206,6 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
     RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Calibration offset[%d]: %f", i,
                 calib_offset_[i]);
   }
-  // Stop the sensor
-  SerialStop(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
-
-  return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-hardware_interface::CallbackReturn
-LeptrinoForceTorqueSensor::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
-{
-  // Start the sensor
-  SerialStart(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
