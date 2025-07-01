@@ -9,19 +9,12 @@ def generate_launch_description():
     return LaunchDescription(
         [
             com_port,
-            # Left sensor
             Node(
                 package="leptrino_force_torque",
-                namespace="left",
+                namespace="",
                 executable="leptrino_force_torque_node",
                 parameters=[{"com_port": "/dev/ttyACM0", "rate": 1200}],
                 output="screen",
             ),
-            #    # Right sensor
-            #    Node(package="leptrino_force_torque",
-            #         namespace="right",
-            #         executable="leptrino_force_torque",
-            #         parameters=[{"com_port":"/dev/LPTRN-01", "rate":1200}],
-            #         output="screen")
         ]
     )
