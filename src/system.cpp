@@ -1,5 +1,7 @@
 // TODO: Not threaded safe!
 
+#include <chrono>
+
 #include "leptrino/system.hpp"
 
 namespace leptrino_force_torque
@@ -15,6 +17,22 @@ LeptrinoForceTorqueSensor::on_init(const hardware_interface::HardwareInfo &info)
   // Initialize the sensor interface
   if (SensorInterface::on_init(info) != hardware_interface::CallbackReturn::SUCCESS)
   {
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  // Validate hardware info
+  if (info_.sensors.empty())
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
+                 "No sensors defined in hardware info");
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  if (info_.sensors[0].state_interfaces.size() != static_cast<size_t>(FN_Num))
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
+                 "State interface count (%zu) does not match expected FN_Num (%d)",
+                 info_.sensors[0].state_interfaces.size(), FN_Num);
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -57,13 +75,18 @@ LeptrinoForceTorqueSensor::on_init(const hardware_interface::HardwareInfo &info)
   calib_offset_.resize(FN_Num, 0.0);
 
   // Initialize the object for logging
-  logger_ = std::make_shared<rclcpp::Logger>(rclcpp::get_logger(
-      "controller_manager.resource_manager.hardware_component.sensor.ExternalRRBotFTSensor"));
+  logger_ = std::make_shared<rclcpp::Logger>(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
   clock_ = std::make_shared<rclcpp::Clock>(rclcpp::Clock());
 
   // Initialize the state interfaces
   hw_sensor_states_.resize(info_.sensors[0].state_interfaces.size(),
                            std::numeric_limits<double>::quiet_NaN());
+
+  // Initialize conversion factors to safe defaults
+  for (int i = 0; i < FN_Num; ++i)
+  {
+    conversion_factor_[i] = 1.0;
+  }
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -73,7 +96,7 @@ std::vector<hardware_interface::StateInterface> LeptrinoForceTorqueSensor::expor
   std::vector<hardware_interface::StateInterface> state_interfaces;
 
   // export sensor state interface
-  for (uint i = 0; i < info_.sensors[0].state_interfaces.size(); i++)
+  for (size_t i = 0; i < info_.sensors[0].state_interfaces.size(); i++)
   {
     state_interfaces.emplace_back(hardware_interface::StateInterface(
         info_.sensors[0].name, info_.sensors[0].state_interfaces[i].name, &hw_sensor_states_[i]));
@@ -94,9 +117,14 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Get the product information
+  // Get the product information with timeout
   GetProductInfo(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
-  while (rclcpp::ok())
+  using clock = std::chrono::steady_clock;
+  const auto timeout = std::chrono::seconds(2);
+  auto start = clock::now();
+  rclcpp::Rate wait_rate(g_rate_);
+  bool got_info = false;
+  while (rclcpp::ok() && (clock::now() - start) < timeout)
   {
     Comm_Rcv();
     if (Comm_CheckRcv() != 0)
@@ -116,19 +144,24 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
         stGetInfo->scPName[P_NAME_SIZE] = 0;
         RCLCPP_INFO(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Type: %s",
                     stGetInfo->scPName);
+        got_info = true;
         break;
       }
     }
-    else
-    {
-      rclcpp::Rate loop_rate(g_rate_);
-      loop_rate.sleep();
-    }
+    wait_rate.sleep();
+  }
+  if (!got_info)
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
+                 "Timeout while getting product information");
+    return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Get the limit information
+  // Get the limit information with timeout
   GetLimit(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
-  while (rclcpp::ok())
+  start = clock::now();
+  bool got_limit = false;
+  while (rclcpp::ok() && (clock::now() - start) < timeout)
   {
     Comm_Rcv();
     if (Comm_CheckRcv() != 0)
@@ -145,14 +178,17 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
                       stGetLimit->fLimit[i]);
           conversion_factor_[i] = stGetLimit->fLimit[i] * 1e-4;
         }
+        got_limit = true;
         break;
       }
     }
-    else
-    {
-      rclcpp::Rate loop_rate(g_rate_);
-      loop_rate.sleep();
-    }
+    wait_rate.sleep();
+  }
+  if (!got_limit)
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("LeptrinoForceTorqueSensor"),
+                 "Timeout while getting limit information");
+    return hardware_interface::CallbackReturn::ERROR;
   }
 
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -248,11 +284,6 @@ hardware_interface::return_type LeptrinoForceTorqueSensor::read(const rclcpp::Ti
       {
         hw_sensor_states_[i] = stForce->ssForce[i] * conversion_factor_[i] - calib_offset_[i];
       }
-    }
-    else
-    {
-      rclcpp::Rate loop_rate(g_rate_);
-      loop_rate.sleep();
     }
   }
 
