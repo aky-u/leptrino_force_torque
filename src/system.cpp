@@ -6,11 +6,18 @@
 
 namespace leptrino_force_torque
 {
-// LeptrinoForceTorqueSensor::~LeptrinoForceTorqueSensor()
-// {
-//   // If the controller manager is shutdown via Ctrl + C
-//   on_cleanup(rclcpp_lifecycle::State());
-// }
+LeptrinoForceTorqueSensor::~LeptrinoForceTorqueSensor()
+{
+  // Best-effort cleanup if destructed without lifecycle transitions
+  try
+  {
+    SerialStop(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+    App_Close(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+  }
+  catch (...)
+  {
+  }
+}
 hardware_interface::CallbackReturn
 LeptrinoForceTorqueSensor::on_init(const hardware_interface::HardwareInfo &info)
 {
@@ -112,6 +119,8 @@ LeptrinoForceTorqueSensor::on_configure(const rclcpp_lifecycle::State &previous_
   App_Init();
   if (g_com_ok_ == COM_NG)
   {
+    // Drain any stale data that might be in the device buffer (previous-run leftovers)
+    DrainRx(std::chrono::milliseconds(50));
     RCLCPP_ERROR(rclcpp::get_logger("LeptrinoForceTorqueSensor"), "Failed to open the port %s",
                  g_com_port_.c_str());
     return hardware_interface::CallbackReturn::ERROR;
@@ -260,6 +269,24 @@ LeptrinoForceTorqueSensor::on_deactivate(const rclcpp_lifecycle::State & /*previ
   // Close the application
   App_Close(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
 
+  return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+hardware_interface::CallbackReturn
+LeptrinoForceTorqueSensor::on_cleanup(const rclcpp_lifecycle::State & /*previous_state*/)
+{
+  // Ensure the stream is stopped and port is closed
+  SerialStop(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+  App_Close(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+  return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+hardware_interface::CallbackReturn
+LeptrinoForceTorqueSensor::on_shutdown(const rclcpp_lifecycle::State & /*previous_state*/)
+{
+  // Same as cleanup: ensure a clean shutdown to avoid device lingering in streaming mode
+  SerialStop(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
+  App_Close(rclcpp::get_logger("LeptrinoForceTorqueSensor"));
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -414,6 +441,21 @@ void LeptrinoForceTorqueSensor::SerialStop(rclcpp::Logger logger)
   SendBuff_[3] = 0;             // reserve
 
   SendData(SendBuff_, len);
+}
+
+void LeptrinoForceTorqueSensor::DrainRx(std::chrono::milliseconds duration)
+{
+  // Non-blocking drain of incoming bytes for a short period to clear stale frames
+  auto start = std::chrono::steady_clock::now();
+  while ((std::chrono::steady_clock::now() - start) < duration)
+  {
+    Comm_Rcv();
+    if (Comm_CheckRcv() != 0)
+    {
+      memset(CommRcvBuff_, 0, sizeof(CommRcvBuff_));
+      (void)Comm_GetRcvData(CommRcvBuff_);
+    }
+  }
 }
 
 } // namespace leptrino_force_torque

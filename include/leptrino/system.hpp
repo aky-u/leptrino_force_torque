@@ -16,7 +16,7 @@ class LeptrinoForceTorqueSensor : public hardware_interface::SensorInterface
 public:
   RCLCPP_SHARED_PTR_DEFINITIONS(LeptrinoForceTorqueSensor)
 
-  // ~LeptrinoForceTorqueSensor() override;
+  ~LeptrinoForceTorqueSensor() override;
 
   hardware_interface::CallbackReturn on_init(const hardware_interface::HardwareInfo &info) override;
 
@@ -30,6 +30,12 @@ public:
 
   hardware_interface::CallbackReturn
   on_deactivate(const rclcpp_lifecycle::State &previous_state) override;
+
+  hardware_interface::CallbackReturn
+  on_cleanup(const rclcpp_lifecycle::State &previous_state) override;
+
+  hardware_interface::CallbackReturn
+  on_shutdown(const rclcpp_lifecycle::State &previous_state) override;
 
   hardware_interface::return_type read(const rclcpp::Time &time,
                                        const rclcpp::Duration &period) override;
@@ -69,6 +75,7 @@ private:
   void GetLimit(rclcpp::Logger logger);
   void SerialStart(rclcpp::Logger logger);
   void SerialStop(rclcpp::Logger logger);
+  void DrainRx(std::chrono::milliseconds duration);
 
   // Objects for logging
   std::shared_ptr<rclcpp::Logger> logger_;
