@@ -52,6 +52,12 @@
 
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include <atomic>
+#include <cmath>
+#include <numeric>
+#include <std_srvs/srv/trigger.hpp>
+#include <thread>
+#include <vector>
 
 // =============================================================================
 //  マクロ定義 Defining macros
@@ -95,20 +101,26 @@ int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
   rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("leptrino");
-  node->declare_parameter("com_port", g_com_port);
-  node->declare_parameter("rate", g_rate);
+  node->declare_parameter("com_port", std::string("/dev/ttyACM0"));
+  node->declare_parameter("rate", 1200);
+  node->declare_parameter("calib_len", 100);
+  node->declare_parameter("calib_start", 100);
+  node->declare_parameter("auto_calibrate", true);
+  node->declare_parameter("calib_std_threshold", 0.05);
+  node->declare_parameter("persist_offsets", false);
 
-  if (!node->get_parameter("com_port", g_com_port))
-  {
-    RCLCPP_WARN(node->get_logger(), "Port is not defined, trying /dev/ttyACM0");
-    g_com_port = "/dev/ttyACM0";
-  }
-
-  if (!node->get_parameter("rate", g_rate))
-  {
-    RCLCPP_WARN(node->get_logger(), "Rate is not defined, using maximum 1.2 kHz");
-    g_rate = 1200;
-  }
+  node->get_parameter("com_port", g_com_port);
+  node->get_parameter("rate", g_rate);
+  int calib_len = 100;
+  int calib_start = 100;
+  bool auto_calibrate = true;
+  double calib_std_threshold = 0.05;
+  bool persist_offsets = false;
+  node->get_parameter("calib_len", calib_len);
+  node->get_parameter("calib_start", calib_start);
+  node->get_parameter("auto_calibrate", auto_calibrate);
+  node->get_parameter("calib_std_threshold", calib_std_threshold);
+  node->get_parameter("persist_offsets", persist_offsets);
   rclcpp::Rate rate(g_rate);
 
   std::string frame_id = "leptrino";
@@ -124,8 +136,8 @@ int main(int argc, char **argv)
 
   if (gSys.com_ok == COM_NG)
   {
-    RCLCPP_ERROR(node->get_logger(), "%s open failed\n", g_com_port.c_str());
-    exit(0);
+    RCLCPP_ERROR(node->get_logger(), "%s open failed", g_com_port.c_str());
+    return 1;
   }
 
   // 製品情報取得
@@ -197,9 +209,47 @@ int main(int argc, char **argv)
 #endif
 
   int loop_counter = 0;
-  const int calib_len = 100;
-  const int calib_start = 100;
   auto msg_offset = geometry_msgs::msg::WrenchStamped();
+  // ensure zero offsets
+  msg_offset.wrench.force.x = 0.0;
+  msg_offset.wrench.force.y = 0.0;
+  msg_offset.wrench.force.z = 0.0;
+  msg_offset.wrench.torque.x = 0.0;
+  msg_offset.wrench.torque.y = 0.0;
+  msg_offset.wrench.torque.z = 0.0;
+
+  // Calibration state
+  std::atomic_bool calibrated(false);
+  std::atomic_bool calib_in_progress(false);
+  int calib_samples_collected = 0;
+  std::vector<double> sums(6, 0.0);
+  std::vector<double> sums_sq(6, 0.0);
+
+  // Service to trigger recalibration on demand
+  auto recal_srv = node->create_service<std_srvs::srv::Trigger>(
+      "recalibrate",
+      [&](const std::shared_ptr<std_srvs::srv::Trigger::Request> /*req*/,
+          std::shared_ptr<std_srvs::srv::Trigger::Response> res)
+      {
+        if (calib_in_progress.load())
+        {
+          res->success = false;
+          res->message = "Calibration already in progress";
+          return;
+        }
+        // reset accumulators
+        calib_in_progress.store(true);
+        calibrated.store(false);
+        calib_samples_collected = 0;
+        std::fill(sums.begin(), sums.end(), 0.0);
+        std::fill(sums_sq.begin(), sums_sq.end(), 0.0);
+        res->success = true;
+        res->message = "Calibration started";
+        RCLCPP_INFO(node->get_logger(), "Manual recalibration requested");
+      });
+
+  // spin node in a background thread so service/callbacks work while main loop runs
+  std::thread spin_thread([&]() { rclcpp::spin(node); });
 
   while (rclcpp::ok())
   {
@@ -240,29 +290,98 @@ int main(int argc, char **argv)
         msg.wrench.torque.y = stForce->ssForce[4] * conversion_factor[4];
         msg.wrench.torque.z = stForce->ssForce[5] * conversion_factor[5];
 
-        if (loop_counter < calib_start)
+        // Calibration: automatic at startup or manual via service
+        if (!calibrated.load())
         {
-          // do nothing
+          if (auto_calibrate && !calib_in_progress.load() && loop_counter >= calib_start)
+          {
+            // start automatic calibration
+            calib_in_progress.store(true);
+            calib_samples_collected = 0;
+            std::fill(sums.begin(), sums.end(), 0.0);
+            std::fill(sums_sq.begin(), sums_sq.end(), 0.0);
+            RCLCPP_INFO(node->get_logger(), "Automatic calibration started");
+          }
+
+          if (calib_in_progress.load())
+          {
+            // accumulate
+            double vals[6] = {msg.wrench.force.x,  msg.wrench.force.y,  msg.wrench.force.z,
+                              msg.wrench.torque.x, msg.wrench.torque.y, msg.wrench.torque.z};
+            for (int i = 0; i < 6; ++i)
+            {
+              sums[i] += vals[i];
+              sums_sq[i] += vals[i] * vals[i];
+            }
+            calib_samples_collected++;
+
+            if (calib_samples_collected >= calib_len)
+            {
+              // compute mean and stddev
+              bool ok = true;
+              double means[6];
+              double stddev[6];
+              for (int i = 0; i < 6; ++i)
+              {
+                means[i] = sums[i] / static_cast<double>(calib_samples_collected);
+                double var = (sums_sq[i] / static_cast<double>(calib_samples_collected)) -
+                             (means[i] * means[i]);
+                stddev[i] = (var > 0.0) ? std::sqrt(var) : 0.0;
+                if (std::abs(stddev[i]) > calib_std_threshold)
+                {
+                  ok = false;
+                }
+              }
+
+              if (ok)
+              {
+                msg_offset.wrench.force.x = means[0];
+                msg_offset.wrench.force.y = means[1];
+                msg_offset.wrench.force.z = means[2];
+                msg_offset.wrench.torque.x = means[3];
+                msg_offset.wrench.torque.y = means[4];
+                msg_offset.wrench.torque.z = means[5];
+                calibrated.store(true);
+                calib_in_progress.store(false);
+                RCLCPP_INFO(node->get_logger(),
+                            "Calibration done. Offsets: fx=%f fy=%f fz=%f tx=%f ty=%f tz=%f",
+                            msg_offset.wrench.force.x, msg_offset.wrench.force.y,
+                            msg_offset.wrench.force.z, msg_offset.wrench.torque.x,
+                            msg_offset.wrench.torque.y, msg_offset.wrench.torque.z);
+
+                if (persist_offsets)
+                {
+                  node->set_parameter(
+                      rclcpp::Parameter("offset_force_x", msg_offset.wrench.force.x));
+                  node->set_parameter(
+                      rclcpp::Parameter("offset_force_y", msg_offset.wrench.force.y));
+                  node->set_parameter(
+                      rclcpp::Parameter("offset_force_z", msg_offset.wrench.force.z));
+                  node->set_parameter(
+                      rclcpp::Parameter("offset_torque_x", msg_offset.wrench.torque.x));
+                  node->set_parameter(
+                      rclcpp::Parameter("offset_torque_y", msg_offset.wrench.torque.y));
+                  node->set_parameter(
+                      rclcpp::Parameter("offset_torque_z", msg_offset.wrench.torque.z));
+                }
+              }
+              else
+              {
+                RCLCPP_WARN(node->get_logger(),
+                            "Calibration failed: stddev too large on one or more axes. stddevs: %f "
+                            "%f %f %f %f %f",
+                            stddev[0], stddev[1], stddev[2], stddev[3], stddev[4], stddev[5]);
+                // reset to allow retry (manual or automatic)
+                calib_in_progress.store(false);
+                calib_samples_collected = 0;
+                std::fill(sums.begin(), sums.end(), 0.0);
+                std::fill(sums_sq.begin(), sums_sq.end(), 0.0);
+              }
+            }
+          }
         }
-        else if (loop_counter >= calib_start && loop_counter < calib_start + calib_len)
-        {
-          msg_offset.wrench.force.x += msg.wrench.force.x;
-          msg_offset.wrench.force.y += msg.wrench.force.y;
-          msg_offset.wrench.force.z += msg.wrench.force.z;
-          msg_offset.wrench.torque.x += msg.wrench.torque.x;
-          msg_offset.wrench.torque.y += msg.wrench.torque.y;
-          msg_offset.wrench.torque.z += msg.wrench.torque.z;
-        }
-        else if (loop_counter == calib_len + calib_start)
-        {
-          msg_offset.wrench.force.x = msg_offset.wrench.force.x / calib_len;
-          msg_offset.wrench.force.y = msg_offset.wrench.force.y / calib_len;
-          msg_offset.wrench.force.z = msg_offset.wrench.force.z / calib_len;
-          msg_offset.wrench.torque.x = msg_offset.wrench.torque.x / calib_len;
-          msg_offset.wrench.torque.y = msg_offset.wrench.torque.y / calib_len;
-          msg_offset.wrench.torque.z = msg_offset.wrench.torque.z / calib_len;
-        }
-        else
+        // if calibrated, subtract and publish
+        if (calibrated.load())
         {
           msg.wrench.force.x -= msg_offset.wrench.force.x;
           msg.wrench.force.y -= msg_offset.wrench.force.y;
